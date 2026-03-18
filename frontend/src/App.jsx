@@ -21,6 +21,24 @@ function App() {
     format: 'jpg',
     resolution: 'original'
   });
+  const [watermarkSettings, setWatermarkSettings] = useState({
+    enabled: false,
+    file: null,
+    fileUrl: null,
+    fullScreen: false,
+    opacity: 50,
+    applyToAll: true
+  });
+  const [logoSettings, setLogoSettings] = useState({
+    enabled: false,
+    file: null,
+    fileUrl: null,
+    positionX: 90,
+    positionY: 10,
+    opacity: 80,
+    size: 10,
+    applyToAll: true
+  });
   const [extracting, setExtracting] = useState(false);
   const [progress, setProgress] = useState({ stage: '', progress: 0, message: '' });
   const [frames, setFrames] = useState([]);
@@ -82,14 +100,85 @@ function App() {
 
   const handleDownloadSingle = async (frame) => {
     try {
-      const response = await fetch(`${API_BASE}${frame.url}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `frame_${frame.index}.${settings.format}`;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      const hasWatermark = watermarkSettings?.enabled && watermarkSettings?.fileUrl;
+      const hasLogo = logoSettings?.enabled && logoSettings?.fileUrl;
+
+      if (!hasWatermark && !hasLogo) {
+        const response = await fetch(`${API_BASE}${frame.url}`);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `frame_${frame.index}.${settings.format}`;
+        link.click();
+        window.URL.revokeObjectURL(url);
+        return;
+      }
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = `${API_BASE}${frame.url}`;
+
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        if (hasWatermark) {
+          const wmImg = new Image();
+          wmImg.crossOrigin = 'anonymous';
+          wmImg.src = watermarkSettings.fileUrl;
+          await new Promise((resolve) => {
+            wmImg.onload = () => {
+              ctx.globalAlpha = watermarkSettings.opacity / 100;
+              if (watermarkSettings.fullScreen) {
+                const cols = Math.ceil(canvas.width / wmImg.width);
+                const rows = Math.ceil(canvas.height / wmImg.height);
+                for (let y = 0; y < rows; y++) {
+                  for (let x = 0; x < cols; x++) {
+                    ctx.drawImage(wmImg, x * wmImg.width, y * wmImg.height);
+                  }
+                }
+              } else {
+                const x = (canvas.width - wmImg.width) / 2;
+                const y = (canvas.height - wmImg.height) / 2;
+                ctx.drawImage(wmImg, x, y);
+              }
+              ctx.globalAlpha = 1;
+              resolve();
+            };
+          });
+        }
+
+        if (hasLogo) {
+          const logoImg = new Image();
+          logoImg.crossOrigin = 'anonymous';
+          logoImg.src = logoSettings.fileUrl;
+          await new Promise((resolve) => {
+            logoImg.onload = () => {
+              const logoWidth = (canvas.width * logoSettings.size) / 100;
+              const logoHeight = (logoImg.height * logoWidth) / logoImg.width;
+              const x = (canvas.width * logoSettings.positionX) / 100 - logoWidth / 2;
+              const y = (canvas.height * logoSettings.positionY) / 100 - logoHeight / 2;
+              ctx.globalAlpha = logoSettings.opacity / 100;
+              ctx.drawImage(logoImg, x, y, logoWidth, logoHeight);
+              ctx.globalAlpha = 1;
+              resolve();
+            };
+          });
+        }
+
+        canvas.toBlob((blob) => {
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `frame_${frame.index}.${settings.format}`;
+          link.click();
+          window.URL.revokeObjectURL(url);
+        }, `image/${settings.format}`);
+      };
     } catch (error) {
       message.error('下载失败');
     }
@@ -98,7 +187,22 @@ function App() {
   const handleDownloadBatch = async (ids, zipName) => {
     try {
       const response = await axios.post(`${API_BASE}/api/download`,
-        { frameIds: ids, zipName },
+        {
+          frameIds: ids,
+          zipName,
+          watermark: watermarkSettings.enabled ? {
+            serverPath: watermarkSettings.serverPath,
+            fullScreen: watermarkSettings.fullScreen,
+            opacity: watermarkSettings.opacity
+          } : null,
+          logo: logoSettings.enabled ? {
+            serverPath: logoSettings.serverPath,
+            positionX: logoSettings.positionX,
+            positionY: logoSettings.positionY,
+            opacity: logoSettings.opacity,
+            size: logoSettings.size
+          } : null
+        },
         { responseType: 'blob' }
       );
 
@@ -131,6 +235,10 @@ function App() {
             <SettingsPanel
               settings={settings}
               onChange={setSettings}
+              watermarkSettings={watermarkSettings}
+              onWatermarkChange={setWatermarkSettings}
+              logoSettings={logoSettings}
+              onLogoChange={setLogoSettings}
               onExtract={handleExtract}
               onReset={handleReset}
               disabled={extracting}
@@ -161,6 +269,8 @@ function App() {
               onSelect={handleSelect}
               onPreview={setPreviewFrame}
               onDownload={handleDownloadSingle}
+              watermarkSettings={watermarkSettings}
+              logoSettings={logoSettings}
             />
           </>
         )}
@@ -172,6 +282,8 @@ function App() {
           onClose={() => setPreviewFrame(null)}
           onNavigate={setPreviewFrame}
           onDownload={handleDownloadSingle}
+          watermarkSettings={watermarkSettings}
+          logoSettings={logoSettings}
         />
       </Content>
     </Layout>

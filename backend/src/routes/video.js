@@ -33,6 +33,52 @@ const upload = multer({
   }
 });
 
+const watermarkStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../../watermarks'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}${ext}`);
+  }
+});
+
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../../logos'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}${ext}`);
+  }
+});
+
+const watermarkUpload = multer({
+  storage: watermarkStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持PNG和JPG格式'));
+    }
+  }
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持PNG和JPG格式'));
+    }
+  }
+});
+
 export default (io) => {
   const router = express.Router();
 
@@ -76,10 +122,38 @@ export default (io) => {
 
   router.post('/download', async (req, res) => {
     try {
-      const { frameIds, zipName } = req.body;
-      const zipPath = await createZip(frameIds, zipName);
+      const { frameIds, zipName, watermark, logo } = req.body;
+      const zipPath = await createZip(frameIds, zipName, watermark, logo);
       res.download(zipPath, async (err) => {
         if (!err) await fs.unlink(zipPath);
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/upload-asset', watermarkUpload.single('file'), async (req, res) => {
+    try {
+      const file = req.file;
+      res.json({
+        success: true,
+        filename: file.filename,
+        path: file.path,
+        url: `/watermarks/${file.filename}`
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/upload-logo', logoUpload.single('file'), async (req, res) => {
+    try {
+      const file = req.file;
+      res.json({
+        success: true,
+        filename: file.filename,
+        path: file.path,
+        url: `/logos/${file.filename}`
       });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });

@@ -1,6 +1,6 @@
 import ImageCard from './ImageCard';
 
-export default function ImageGrid({ frames, selectedIds, onSelect, onPreview, onDownload }) {
+export default function ImageGrid({ frames, selectedIds, onSelect, onPreview, onDownload, watermarkSettings, logoSettings }) {
   if (frames.length === 0) return null;
 
   return (
@@ -19,6 +19,8 @@ export default function ImageGrid({ frames, selectedIds, onSelect, onPreview, on
             onSelect={onSelect}
             onPreview={onPreview}
             onDownload={onDownload}
+            watermarkSettings={watermarkSettings}
+            logoSettings={logoSettings}
           />
         ))}
       </div>

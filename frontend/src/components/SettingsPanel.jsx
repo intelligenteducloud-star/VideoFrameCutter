@@ -1,6 +1,18 @@
-import { InputNumber, Radio, Button, Space } from 'antd';
+import { InputNumber, Radio, Button, Space, Collapse } from 'antd';
+import WatermarkPanel from './WatermarkPanel';
+import LogoPanel from './LogoPanel';
 
-export default function SettingsPanel({ settings, onChange, onExtract, onReset, disabled }) {
+export default function SettingsPanel({
+  settings,
+  onChange,
+  watermarkSettings,
+  onWatermarkChange,
+  logoSettings,
+  onLogoChange,
+  onExtract,
+  onReset,
+  disabled
+}) {
   return (
     <div style={{ padding: 24, background: '#fff', borderRadius: 8 }}>
       <h3>⚙️ 截帧参数设置</h3>
@@ -61,6 +73,21 @@ export default function SettingsPanel({ settings, onChange, onExtract, onReset, 
           </Button>
           <Button onClick={onReset}>🔄 清空重置</Button>
         </Space>
+
+        <Collapse
+          items={[
+            {
+              key: 'watermark',
+              label: '🎨 水印设置',
+              children: <WatermarkPanel settings={watermarkSettings} onChange={onWatermarkChange} />
+            },
+            {
+              key: 'logo',
+              label: '🏷️ Logo设置',
+              children: <LogoPanel settings={logoSettings} onChange={onLogoChange} />
+            }
+          ]}
+        />
       </Space>
     </div>
   );
