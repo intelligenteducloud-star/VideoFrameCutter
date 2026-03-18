@@ -29,12 +29,21 @@ const io = new Server(httpServer, {
 
 app.use(cors());
 app.use(express.json());
+
+// 静态文件服务
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/frames', express.static(path.join(__dirname, '../frames')));
 app.use('/watermarks', express.static(path.join(__dirname, '../watermarks')));
 app.use('/logos', express.static(path.join(__dirname, '../logos')));
 
+// API路由
 app.use('/api', videoRouter(io));
+
+// 服务前端静态文件（生产环境）
+app.use(express.static(path.join(__dirname, '../../frontend/dist')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+});
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);

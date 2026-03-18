@@ -9,6 +9,8 @@ package-lock.json
 # Temporary files
 backend/uploads/
 backend/frames/
+backend/watermarks/
+backend/logos/
 
 # Build output
 frontend/dist/
@@ -25,3 +27,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+logs/
+
+# PM2
+.pm2/
