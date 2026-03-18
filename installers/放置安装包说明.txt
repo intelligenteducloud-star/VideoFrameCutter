@@ -1,0 +1,17 @@
+请将以下文件放入此目录：
+
+1. node-v18.20.5-x64.msi
+   下载: https://nodejs.org/dist/v18.20.5/node-v18.20.5-x64.msi
+
+2. ffmpeg 文件夹
+   下载: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+   解压后重命名为 ffmpeg
+
+目录结构应为：
+installers/
+├── node-v18.20.5-x64.msi
+└── ffmpeg/
+    └── bin/
+        ├── ffmpeg.exe
+        ├── ffplay.exe
+        └── ffprobe.exe
