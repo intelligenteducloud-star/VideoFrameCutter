@@ -16,6 +16,10 @@ backend/logos/
 frontend/dist/
 frontend/build/
 
+# Release package
+VideoFrameCutter-Release/
+*.zip
+
 # IDE
 .vscode/
 .idea/
