@@ -17,14 +17,15 @@ if errorlevel 1 (
 echo [✓] Node.js 已安装
 
 echo.
-echo [2/3] 检查FFmpeg环境...
-ffmpeg -version >nul 2>&1
-if errorlevel 1 (
-    echo [错误] 未检测到FFmpeg，请先运行 install-env.bat 安装环境
+echo [2/3] 配置FFmpeg环境...
+if exist "installers\ffmpeg\bin\ffmpeg.exe" (
+    set "PATH=%~dp0installers\ffmpeg\bin;%PATH%"
+    echo [✓] FFmpeg 已配置
+) else (
+    echo [错误] 未找到FFmpeg文件，请确保 installers\ffmpeg\bin\ffmpeg.exe 存在
     pause
     exit /b 1
 )
-echo [✓] FFmpeg 已安装
 
 echo.
 echo [3/3] 启动服务...

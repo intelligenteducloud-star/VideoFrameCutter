@@ -7,40 +7,36 @@ echo.
 
 cd /d "%~dp0"
 
-echo [1/4] 检查Node.js...
+echo [1/4] 检查并安装 Node.js...
 node -v >nul 2>&1
 if errorlevel 1 (
-    echo [!] 未检测到Node.js
-    echo [提示] 请手动安装 installers\node-v18.20.5-x64.msi
-    echo [提示] 安装完成后重新运行此脚本
-    pause
-    exit /b 1
+    echo [!] 未检测到Node.js，开始自动安装...
+    if exist "installers\node-v18.20.5-x64.msi" (
+        echo 正在安装 Node.js...
+        start /wait msiexec /i "%~dp0installers\node-v18.20.5-x64.msi" /qb
+        echo [✓] Node.js 安装完成
+        echo [提示] 请关闭此窗口，重新打开后再运行此脚本
+        pause
+        exit /b 0
+    ) else (
+        echo [错误] 未找到 Node.js 安装包
+        echo [提示] 请将 node-v18.20.5-x64.msi 放入 installers 目录
+        pause
+        exit /b 1
+    )
 ) else (
     echo [✓] Node.js 已安装
 )
 
 echo.
 echo [2/4] 检查FFmpeg...
-ffmpeg -version >nul 2>&1
-if errorlevel 1 (
-    echo [!] 未检测到FFmpeg
-    echo [提示] 正在配置FFmpeg...
-
-    if exist "installers\ffmpeg\bin\ffmpeg.exe" (
-        set "FFMPEG_PATH=%~dp0installers\ffmpeg\bin"
-        setx PATH "%PATH%;%FFMPEG_PATH%" >nul
-        echo [✓] FFmpeg 已配置到系统PATH
-        echo [提示] 请关闭此窗口，重新打开命令行后再运行此脚本
-        pause
-        exit /b 0
-    ) else (
-        echo [错误] 未找到FFmpeg文件
-        echo [提示] 请确保 installers\ffmpeg\bin\ffmpeg.exe 存在
-        pause
-        exit /b 1
-    )
+if exist "installers\ffmpeg\bin\ffmpeg.exe" (
+    echo [✓] FFmpeg 文件已就绪
 ) else (
-    echo [✓] FFmpeg 已安装
+    echo [错误] 未找到FFmpeg文件
+    echo [提示] 请确保 installers\ffmpeg\bin\ffmpeg.exe 存在
+    pause
+    exit /b 1
 )
 
 echo.

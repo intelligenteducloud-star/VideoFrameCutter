@@ -1,57 +1,84 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo   生成部署包
+echo   生成/更新部署包
 echo ========================================
 echo.
 
 cd /d "%~dp0"
 
 set RELEASE_DIR=VideoFrameCutter-Release
-set TIMESTAMP=%date:~0,4%%date:~5,2%%date:~8,2%_%time:~0,2%%time:~3,2%%time:~6,2%
-set TIMESTAMP=%TIMESTAMP: =0%
 
-echo [1/6] 清理旧的发布目录...
-if exist "%RELEASE_DIR%" rd /s /q "%RELEASE_DIR%"
-mkdir "%RELEASE_DIR%"
+echo [1/7] 智能清理（保留installers和node_modules）...
+if exist "%RELEASE_DIR%\backend\src" rd /s /q "%RELEASE_DIR%\backend\src"
+if exist "%RELEASE_DIR%\frontend\dist" rd /s /q "%RELEASE_DIR%\frontend\dist"
+echo [✓] 已清理旧代码文件
 
-echo [2/6] 复制后端文件...
-mkdir "%RELEASE_DIR%\backend"
-xcopy /E /I /Q "backend\src" "%RELEASE_DIR%\backend\src\"
-copy "backend\package.json" "%RELEASE_DIR%\backend\" >nul
-copy "backend\.env" "%RELEASE_DIR%\backend\" >nul
+echo [2/7] 创建目录结构...
+if not exist "%RELEASE_DIR%\backend\src" mkdir "%RELEASE_DIR%\backend\src"
+if not exist "%RELEASE_DIR%\frontend\dist" mkdir "%RELEASE_DIR%\frontend\dist"
+if not exist "%RELEASE_DIR%\installers" mkdir "%RELEASE_DIR%\installers"
+if not exist "%RELEASE_DIR%\logs" mkdir "%RELEASE_DIR%\logs"
 
-echo [3/6] 复制前端构建文件...
-mkdir "%RELEASE_DIR%\frontend"
-xcopy /E /I /Q "frontend\dist" "%RELEASE_DIR%\frontend\dist\"
+echo [3/7] 复制后端文件...
+xcopy /E /I /Y /Q "backend\src" "%RELEASE_DIR%\backend\src\" >nul
+copy /Y "backend\package.json" "%RELEASE_DIR%\backend\" >nul
+copy /Y "backend\.env" "%RELEASE_DIR%\backend\" >nul
 
-echo [4/6] 复制部署脚本...
-copy "start.bat" "%RELEASE_DIR%\" >nul
-copy "stop.bat" "%RELEASE_DIR%\" >nul
-copy "install-env.bat" "%RELEASE_DIR%\" >nul
-copy "download-installers.bat" "%RELEASE_DIR%\" >nul
-copy "README-部署说明.txt" "%RELEASE_DIR%\" >nul
-
-echo [5/6] 创建必要目录...
-mkdir "%RELEASE_DIR%\installers"
-copy "installers\放置安装包说明.txt" "%RELEASE_DIR%\installers\" >nul
-mkdir "%RELEASE_DIR%\logs"
-
-echo [6/6] 打包压缩...
-if exist "%ProgramFiles%\7-Zip\7z.exe" (
-    "%ProgramFiles%\7-Zip\7z.exe" a -tzip "VideoFrameCutter-Release-%TIMESTAMP%.zip" "%RELEASE_DIR%\" >nul
-    echo [✓] 已生成压缩包: VideoFrameCutter-Release-%TIMESTAMP%.zip
+echo [4/7] 复制前端构建文件...
+if exist "frontend\dist" (
+    xcopy /E /I /Y /Q "frontend\dist" "%RELEASE_DIR%\frontend\dist\" >nul
+    echo [✓] 前端文件已复制
 ) else (
-    echo [!] 未安装7-Zip，跳过压缩步骤
+    echo [!] 警告: frontend\dist 不存在，请先运行 npm run build
+)
+
+echo [5/7] 复制部署脚本（仅当根目录存在时）...
+if exist "start.bat" copy /Y "start.bat" "%RELEASE_DIR%\" >nul
+if exist "stop.bat" copy /Y "stop.bat" "%RELEASE_DIR%\" >nul
+if exist "install-env.bat" copy /Y "install-env.bat" "%RELEASE_DIR%\" >nul
+if exist "download-installers.bat" copy /Y "download-installers.bat" "%RELEASE_DIR%\" >nul
+if exist "README-部署说明.txt" copy /Y "README-部署说明.txt" "%RELEASE_DIR%\" >nul
+echo [✓] 部署脚本已更新
+
+echo [6/7] 复制安装包说明...
+if exist "installers\下载说明.txt" (
+    copy /Y "installers\下载说明.txt" "%RELEASE_DIR%\installers\" >nul
+)
+if exist "installers\放置安装包说明.txt" (
+    copy /Y "installers\放置安装包说明.txt" "%RELEASE_DIR%\installers\" >nul
+)
+
+echo [7/8] 检查安装包（不覆盖已存在的）...
+if exist "installers\node-v18.20.5-x64.msi" (
+    if not exist "%RELEASE_DIR%\installers\node-v18.20.5-x64.msi" (
+        copy /Y "installers\node-v18.20.5-x64.msi" "%RELEASE_DIR%\installers\" >nul
+        echo [✓] Node.js 安装包已复制
+    ) else (
+        echo [✓] Node.js 安装包已存在，保持不变
+    )
+)
+if exist "installers\ffmpeg" (
+    if not exist "%RELEASE_DIR%\installers\ffmpeg" (
+        xcopy /E /I /Y /Q "installers\ffmpeg" "%RELEASE_DIR%\installers\ffmpeg\" >nul
+        echo [✓] FFmpeg 已复制
+    ) else (
+        echo [✓] FFmpeg 已存在，保持不变
+    )
 )
 
 echo.
+echo [8/8] 修复bat文件换行符格式...
+powershell -ExecutionPolicy Bypass -Command "$files = Get-ChildItem -Path '%RELEASE_DIR%' -Filter '*.bat' -Recurse; foreach ($file in $files) { $content = [System.IO.File]::ReadAllText($file.FullName); $content = $content -replace \"`r`n\", \"`n\"; $content = $content -replace \"`n\", \"`r`n\"; [System.IO.File]::WriteAllText($file.FullName, $content) }" >nul
+echo [✓] 换行符格式已修复
+
+echo.
 echo ========================================
-echo   部署包生成完成！
+echo   部署包更新完成！
 echo ========================================
 echo.
-echo   发布目录: %RELEASE_DIR%\
+echo   部署包位置: %CD%\%RELEASE_DIR%\
 echo.
-echo   将此文件夹复制到服务器即可部署
+echo   可以将此文件夹复制到服务器部署
 echo.
 pause
