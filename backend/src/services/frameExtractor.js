@@ -1,36 +1,108 @@
 import ffmpeg from 'fluent-ffmpeg';
+import { spawnSync } from 'child_process';
+import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { filterFrames } from './frameFilter.js';
-import fs from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const backendRoot = path.join(__dirname, '../..');
+const releaseRoot = path.join(__dirname, '../../..');
 
-// 配置FFmpeg路径
-const ffmpegPath = 'C:/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-8.1-full_build/bin/ffmpeg.exe';
-const ffprobePath = 'C:/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-8.1-full_build/bin/ffprobe.exe';
+const normalizeCandidate = (value) => {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
 
-ffmpeg.setFfmpegPath(ffmpegPath);
-ffmpeg.setFfprobePath(ffprobePath);
-
-const getVideoDuration = (videoPath) => {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
-      if (err) reject(err);
-      else resolve(metadata.format.duration);
-    });
-  });
+  return value.trim().replace(/^"(.*)"$/, '$1');
 };
 
-const extractSingleFrame = (videoPath, timestamp, outputPath, quality, resolution) => {
-  return new Promise((resolve, reject) => {
+const findBinaryInPath = (binaryName) => {
+  const command = process.platform === 'win32' ? 'where' : 'which';
+  const result = spawnSync(command, [binaryName], {
+    encoding: 'utf8',
+    windowsHide: true
+  });
+
+  if (result.status !== 0 || !result.stdout) {
+    return null;
+  }
+
+  const firstMatch = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  return firstMatch && fs.existsSync(firstMatch) ? firstMatch : null;
+};
+
+const resolveBinary = (envName, fallbackRelativePath) => {
+  const envValue = normalizeCandidate(process.env[envName]);
+  if (envValue && fs.existsSync(envValue)) {
+    return envValue;
+  }
+
+  const fallbackRoots = [
+    releaseRoot,
+    backendRoot,
+    process.cwd(),
+    path.join(process.cwd(), '..'),
+    path.join(process.cwd(), '..', '..')
+  ];
+
+  for (const root of fallbackRoots) {
+    const fallbackPath = path.join(root, fallbackRelativePath);
+    if (fs.existsSync(fallbackPath)) {
+      return fallbackPath;
+    }
+  }
+
+  const binaryName = path.basename(fallbackRelativePath);
+  return findBinaryInPath(binaryName);
+};
+
+const ffmpegPath = resolveBinary('FFMPEG_PATH', 'installers/ffmpeg/bin/ffmpeg.exe');
+const ffprobePath = resolveBinary('FFPROBE_PATH', 'installers/ffmpeg/bin/ffprobe.exe');
+
+if (ffmpegPath) {
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
+
+if (ffprobePath) {
+  ffmpeg.setFfprobePath(ffprobePath);
+}
+
+const getVideoDuration = (videoPath) =>
+  new Promise((resolve, reject) => {
+    if (!ffprobePath && !process.env.FFPROBE_PATH) {
+      reject(
+        new Error(
+          'Cannot find ffprobe. Put ffprobe.exe into installers/ffmpeg/bin, or configure FFPROBE_PATH.'
+        )
+      );
+      return;
+    }
+
+    ffmpeg.ffprobe(videoPath, (error, metadata) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(metadata.format.duration);
+    });
+  });
+
+const extractSingleFrame = (videoPath, timestamp, outputPath, quality, resolution) =>
+  new Promise((resolve, reject) => {
     let command = ffmpeg(videoPath)
       .seekInput(timestamp)
       .frames(1)
       .outputOptions(`-q:v ${quality}`);
 
-    if (resolution && resolution !== 'original') {
+    if (resolution) {
       command = command.size(resolution);
     }
 
@@ -40,6 +112,11 @@ const extractSingleFrame = (videoPath, timestamp, outputPath, quality, resolutio
       .on('error', reject)
       .run();
   });
+
+const emitProgress = (io, socketId, payload) => {
+  if (io && socketId) {
+    io.to(socketId).emit('progress', payload);
+  }
 };
 
 export const extractFrames = async (videoId, options, io, socketId) => {
@@ -47,67 +124,61 @@ export const extractFrames = async (videoId, options, io, socketId) => {
   const videoPath = path.join(__dirname, '../../uploads', videoId);
   const framesDir = path.join(__dirname, '../../frames', videoId.split('.')[0]);
 
-  await fs.mkdir(framesDir, { recursive: true });
+  await fsPromises.mkdir(framesDir, { recursive: true });
 
   const duration = await getVideoDuration(videoPath);
   const extractCount = Math.ceil(count * 1.5);
   const interval = duration / (extractCount + 1);
 
   const qualityMap = { low: 8, medium: 5, high: 2 };
-  const qValue = qualityMap[quality] || 5;
+  const qValue = qualityMap[quality] ?? qualityMap.medium;
 
   const resolutionMap = {
     '720p': '1280x720',
     '1080p': '1920x1080',
-    'original': null
+    original: null
   };
-  const resValue = resolutionMap[resolution] || null;
+  const resValue = resolutionMap[resolution] ?? null;
 
   const frames = [];
 
-  for (let i = 1; i <= extractCount; i++) {
-    const timestamp = interval * i;
-    const framePath = path.join(framesDir, `frame_${i}.${format}`);
+  for (let index = 1; index <= extractCount; index += 1) {
+    const timestamp = interval * index;
+    const framePath = path.join(framesDir, `frame_${index}.${format}`);
 
     try {
       await extractSingleFrame(videoPath, timestamp, framePath, qValue, resValue);
       frames.push({
-        id: `${videoId.split('.')[0]}_${i}`,
+        id: `${videoId.split('.')[0]}_${index}`,
         path: framePath,
         timestamp,
-        index: i
+        index
       });
 
-      if (io && socketId) {
-        io.to(socketId).emit('progress', {
-          stage: 'extracting',
-          progress: Math.floor((i / extractCount) * 100),
-          message: `正在提取第 ${i}/${extractCount} 帧...`,
-          details: { extracted: i, total: extractCount }
-        });
-      }
+      emitProgress(io, socketId, {
+        stage: 'extracting',
+        progress: Math.floor((index / extractCount) * 100),
+        message: `正在提取第 ${index}/${extractCount} 帧...`,
+        details: { extracted: index, total: extractCount }
+      });
     } catch (error) {
-      console.error(`Failed to extract frame ${i}:`, error);
+      console.error(`Failed to extract frame ${index}:`, error);
     }
   }
 
-  if (io && socketId) {
-    io.to(socketId).emit('progress', {
-      stage: 'filtering',
-      progress: 0,
-      message: '开始智能筛选...'
-    });
-  }
+  emitProgress(io, socketId, {
+    stage: 'filtering',
+    progress: 0,
+    message: '开始智能筛选...'
+  });
 
   const filteredFrames = await filterFrames(frames, count, io, socketId);
 
-  if (io && socketId) {
-    io.to(socketId).emit('progress', {
-      stage: 'complete',
-      progress: 100,
-      message: '截帧完成！'
-    });
-  }
+  emitProgress(io, socketId, {
+    stage: 'complete',
+    progress: 100,
+    message: '截帧完成。'
+  });
 
   return filteredFrames;
 };

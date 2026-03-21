@@ -1,197 +1,181 @@
-# 视频智能截帧工具
+﻿# 视频智能截帧工具
 
-一个基于Web的视频智能截帧工具，支持视频上传、智能截帧、预览和批量下载功能。
+一个基于 Web 的视频智能截帧工具，支持上传视频、按参数抽帧、自动过滤低质量截图、预览结果、单张下载、批量 ZIP 下载，并支持给截图叠加水印和 Logo。
 
-## 功能特性
+## 文档入口
 
-- 📁 支持多种视频格式（MP4, AVI, MOV, WMV, FLV, MKV）
-- 🎯 自定义截取数量（1-50张）
-- 🤖 智能筛选（自动过滤黑白屏、模糊、重复画面）
-- 🖼️ 图片预览和放大查看
-- 📥 单张下载或批量打包下载
-- ⚡ 实时进度显示
-- 🎨 响应式设计
+为避免历史版本文档造成混淆，当前仓库请只参考以下文档：
+
+1. 产品需求文档：
+   [视频智能截帧工具需求文档.md](/D:/AIprojects/VideoFrameCutter/视频智能截帧工具需求文档.md)
+2. 部署文档：
+   [DEPLOY.md](/D:/AIprojects/VideoFrameCutter/DEPLOY.md)
+3. 发布包使用说明：
+   [README-部署说明.txt](/D:/AIprojects/VideoFrameCutter/README-部署说明.txt)
+
+## 功能概览
+
+1. 支持上传单个视频文件，默认最大 300MB。
+2. 支持配置截图数量、质量、格式、分辨率。
+3. 自动过滤黑白屏、模糊帧、重复帧。
+4. 支持抽帧进度展示和结果网格预览。
+5. 支持单张下载和批量 ZIP 下载。
+6. 支持水印和 Logo 的实时预览与下载落盘。
+7. 支持运行期历史文件自动清理。
+
+## 当前版本说明
+
+1. Logo 定位使用 `X/Y` 滑块，不支持九宫格或拖拽定位。
+2. “仅当前图片下载 / 预览”只影响当前预览和单张下载，不保存为长期单图配置。
+3. 批量下载只应用“应用到所有图片”的水印 / Logo 设置。
+4. 项目定位为本地 / 局域网部署工具，不包含多用户、任务历史和数据库能力。
 
 ## 技术栈
 
 ### 前端
-- React 18
+
+- React
 - Vite
 - Ant Design
-- Socket.io Client
 - Axios
+- Socket.IO Client
 
 ### 后端
-- Node.js + Express
-- FFmpeg (视频处理)
-- Socket.io (实时通信)
-- Jimp (图像分析)
-- Sharp (图像处理)
 
-## 安装要求
-
-### 系统依赖
 - Node.js 18+
-- FFmpeg (必须安装)
+- Express
+- Socket.IO
+- FFmpeg / ffprobe
+- Jimp
+- Sharp
+- Archiver
 
-### 安装FFmpeg
+## 项目结构
 
-**Windows:**
-```bash
-# 使用 Chocolatey
-choco install ffmpeg
-
-# 或下载安装包
-# https://ffmpeg.org/download.html
+```text
+VideoFrameCutter/
+├── backend/
+│   ├── src/
+│   ├── uploads/
+│   ├── frames/
+│   ├── watermarks/
+│   ├── logos/
+│   ├── test/
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── installers/
+├── DEPLOY.md
+├── README.md
+└── 视频智能截帧工具需求文档.md
 ```
 
-**macOS:**
+## 环境要求
+
+1. Node.js 18 或更高版本。
+2. FFmpeg 和 ffprobe。
+
+后端按以下顺序查找 FFmpeg：
+
+1. `FFMPEG_PATH` / `FFPROBE_PATH`
+2. 项目内 `installers/ffmpeg/bin`
+3. 系统 `PATH`
+
+## 本地开发
+
+### 安装依赖
+
 ```bash
-brew install ffmpeg
-```
-
-**Linux:**
-```bash
-sudo apt-get install ffmpeg
-```
-
-## 快速开始
-
-### 1. 安装依赖
-
-```bash
-# 安装后端依赖
 cd backend
 npm install
 
-# 安装前端依赖
 cd ../frontend
 npm install
 ```
 
-### 2. 启动后端服务
+### 配置后端环境变量
 
-```bash
-cd backend
-npm start
-```
-
-后端服务将运行在 `http://localhost:3000`
-
-### 3. 启动前端服务
-
-```bash
-cd frontend
-npm run dev
-```
-
-前端服务将运行在 `http://localhost:5173`
-
-### 4. 访问应用
-
-打开浏览器访问 `http://localhost:5173`
-
-## 使用说明
-
-1. **上传视频**: 拖拽或点击选择视频文件（最大200MB）
-2. **设置参数**:
-   - 截取数量（1-50张）
-   - 图片质量（低/中/高）
-   - 图片格式（JPG/PNG）
-   - 分辨率（原视频/720P/1080P）
-3. **开始截取**: 点击"开始截取"按钮
-4. **查看结果**: 等待智能筛选完成，查看截取的图片
-5. **下载图片**:
-   - 单张下载：点击图片下方的下载按钮
-   - 批量下载：勾选图片后点击"批量下载"，可自定义ZIP文件名
-
-## 项目结构
-
-```
-VideoFrameCutter/
-├── frontend/                 # 前端项目
-│   ├── src/
-│   │   ├── components/      # React组件
-│   │   ├── services/        # API服务
-│   │   └── App.jsx          # 主应用
-│   └── package.json
-├── backend/                  # 后端项目
-│   ├── src/
-│   │   ├── routes/          # API路由
-│   │   ├── services/        # 业务逻辑
-│   │   └── server.js        # 服务器入口
-│   ├── uploads/             # 视频上传目录
-│   ├── frames/              # 截帧存储目录
-│   └── package.json
-└── README.md
-```
-
-## 智能筛选算法
-
-工具会自动进行以下筛选：
-
-1. **黑白屏检测**: 过滤90%以上像素为纯黑或纯白的画面
-2. **模糊检测**: 使用拉普拉斯方差检测清晰度，过滤模糊画面
-3. **相似度检测**: 使用感知哈希算法检测重复画面
-4. **质量排序**: 根据清晰度分数排序，保留最佳画面
-
-## 配置说明
-
-### 后端配置
-
-可在 `backend/.env` 文件中配置：
+编辑 [backend/.env](/D:/AIprojects/VideoFrameCutter/backend/.env)：
 
 ```env
-PORT=3000
-MAX_FILE_SIZE=209715200  # 200MB
+PORT=3500
+MAX_FILE_SIZE=314572800
+
+# 可选
+# FFMPEG_PATH=C:/ffmpeg/bin/ffmpeg.exe
+# FFPROBE_PATH=C:/ffmpeg/bin/ffprobe.exe
+# CLEANUP_INTERVAL_MS=3600000
+# UPLOAD_TTL_MS=86400000
+# FRAMES_TTL_MS=86400000
+# ASSET_TTL_MS=604800000
 ```
 
-### 前端配置
-
-修改 `frontend/src/services/api.js` 中的 API_BASE 地址。
-
-## 常见问题
-
-**Q: 提示"FFmpeg未安装"？**
-A: 请确保系统已安装FFmpeg并添加到环境变量PATH中。
-
-**Q: 上传失败？**
-A: 检查文件格式和大小是否符合要求（≤200MB）。
-
-**Q: 截帧速度慢？**
-A: 视频文件越大、分辨率越高，处理时间越长。建议使用中等质量设置。
-
-**Q: 智能筛选后图片数量不足？**
-A: 可能是视频内容重复度高或质量较差，系统会尽量保留最佳画面。
-
-## 开发模式
+### 启动后端
 
 ```bash
-# 后端开发模式（自动重启）
-cd backend
-npm run dev
-
-# 前端开发模式（热更新）
-cd frontend
-npm run dev
-```
-
-## 构建生产版本
-
-```bash
-# 构建前端
-cd frontend
-npm run build
-
-# 生产环境运行后端
 cd backend
 npm start
 ```
 
-## 许可证
+访问地址：`http://localhost:3500`
+
+### 启动前端开发服务
+
+```bash
+cd frontend
+npm run dev
+```
+
+访问地址：`http://localhost:5173`
+
+如需将前端指向其他后端地址，可设置：
+
+```bash
+VITE_API_BASE=http://localhost:3500
+```
+
+## 测试与校验
+
+### 后端测试
+
+```bash
+cd backend
+npm test
+```
+
+当前覆盖：
+
+1. 文件清理策略
+2. ZIP 文件名清洗
+3. 黑白屏检测、清晰度比较、相似度计算
+
+### 前端校验
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+## 运行期文件清理
+
+后端会定时清理以下目录中的过期文件：
+
+1. `backend/uploads`
+2. `backend/frames`
+3. `backend/watermarks`
+4. `backend/logos`
+
+默认策略：
+
+1. 上传视频保留 24 小时
+2. 抽帧结果保留 24 小时
+3. 水印和 Logo 素材保留 7 天
+
+可通过 `.env` 覆盖。
+
+## License
 
 MIT
-
-## 作者
-
-视频智能截帧工具开发团队

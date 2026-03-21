@@ -1,19 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Layout, Progress, message } from 'antd';
-import { socket } from './services/api';
+import axios from 'axios';
+import { API_BASE_URL, buildAssetUrl, downloadZip, socket } from './services/api';
+import { hasAnyEffect, renderFrameWithEffects } from './services/imageEffects';
 import UploadArea from './components/UploadArea';
 import SettingsPanel from './components/SettingsPanel';
 import OperationBar from './components/OperationBar';
 import ImageGrid from './components/ImageGrid';
 import PreviewModal from './components/PreviewModal';
-import axios from 'axios';
 import './App.css';
 
 const { Header, Content } = Layout;
 
-function App() {
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3500';
+const defaultWatermarkSettings = {
+  enabled: false,
+  file: null,
+  fileUrl: null,
+  serverPath: null,
+  fullScreen: false,
+  opacity: 50,
+  applyToAll: true
+};
 
+const defaultLogoSettings = {
+  enabled: false,
+  file: null,
+  fileUrl: null,
+  serverPath: null,
+  positionX: 90,
+  positionY: 10,
+  opacity: 80,
+  size: 10,
+  applyToAll: true
+};
+
+function App() {
   const [videoInfo, setVideoInfo] = useState(null);
   const [settings, setSettings] = useState({
     count: 10,
@@ -21,24 +42,8 @@ function App() {
     format: 'jpg',
     resolution: 'original'
   });
-  const [watermarkSettings, setWatermarkSettings] = useState({
-    enabled: false,
-    file: null,
-    fileUrl: null,
-    fullScreen: false,
-    opacity: 50,
-    applyToAll: true
-  });
-  const [logoSettings, setLogoSettings] = useState({
-    enabled: false,
-    file: null,
-    fileUrl: null,
-    positionX: 90,
-    positionY: 10,
-    opacity: 80,
-    size: 10,
-    applyToAll: true
-  });
+  const [watermarkSettings, setWatermarkSettings] = useState(defaultWatermarkSettings);
+  const [logoSettings, setLogoSettings] = useState(defaultLogoSettings);
   const [extracting, setExtracting] = useState(false);
   const [progress, setProgress] = useState({ stage: '', progress: 0, message: '' });
   const [frames, setFrames] = useState([]);
@@ -46,20 +51,29 @@ function App() {
   const [previewFrame, setPreviewFrame] = useState(null);
 
   useEffect(() => {
-    socket.on('progress', (data) => {
-      setProgress(data);
-    });
-
-    return () => socket.off('progress');
+    const handleProgress = (payload) => setProgress(payload);
+    socket.on('progress', handleProgress);
+    return () => socket.off('progress', handleProgress);
   }, []);
 
-  const handleUploadSuccess = (data) => {
-    setVideoInfo(data);
+  const readBlobError = async (error) => {
+    const payload = error?.response?.data;
+    if (!(payload instanceof Blob)) {
+      return payload?.error || error.message;
+    }
+
+    try {
+      const text = await payload.text();
+      const parsed = JSON.parse(text);
+      return parsed.error || error.message;
+    } catch {
+      return error.message;
+    }
   };
 
   const handleExtract = async () => {
     if (!videoInfo) {
-      message.error('请先上传视频');
+      message.error('请先上传视频。');
       return;
     }
 
@@ -68,7 +82,7 @@ function App() {
     setSelectedIds([]);
 
     try {
-      const response = await axios.post(`${API_BASE}/api/extract`, {
+      const response = await axios.post(API_BASE_URL ? `${API_BASE_URL}/api/extract` : '/api/extract', {
         videoId: videoInfo.videoId,
         ...settings,
         socketId: socket.id
@@ -76,10 +90,10 @@ function App() {
 
       if (response.data.success) {
         setFrames(response.data.frames);
-        message.success('截帧完成！');
+        message.success('截帧完成。');
       }
     } catch (error) {
-      message.error('截帧失败: ' + error.message);
+      message.error(`截帧失败: ${error.response?.data?.error || error.message}`);
     } finally {
       setExtracting(false);
     }
@@ -89,132 +103,72 @@ function App() {
     setVideoInfo(null);
     setFrames([]);
     setSelectedIds([]);
+    setPreviewFrame(null);
     setProgress({ stage: '', progress: 0, message: '' });
+    setWatermarkSettings(defaultWatermarkSettings);
+    setLogoSettings(defaultLogoSettings);
   };
 
   const handleSelect = (id, checked) => {
-    setSelectedIds(prev =>
-      checked ? [...prev, id] : prev.filter(i => i !== id)
-    );
+    setSelectedIds((current) => (checked ? [...current, id] : current.filter((item) => item !== id)));
+  };
+
+  const downloadBlob = (blob, fileName) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const handleDownloadSingle = async (frame) => {
     try {
-      const hasWatermark = watermarkSettings?.enabled && watermarkSettings?.fileUrl;
-      const hasLogo = logoSettings?.enabled && logoSettings?.fileUrl;
-
-      if (!hasWatermark && !hasLogo) {
-        const response = await fetch(`${API_BASE}${frame.url}`);
+      if (!hasAnyEffect(watermarkSettings, logoSettings, 'single')) {
+        const response = await fetch(buildAssetUrl(frame.url));
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `frame_${frame.index}.${settings.format}`;
-        link.click();
-        window.URL.revokeObjectURL(url);
+        downloadBlob(blob, `frame_${frame.index}.${settings.format}`);
         return;
       }
 
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = `${API_BASE}${frame.url}`;
-
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-
-        if (hasWatermark) {
-          const wmImg = new Image();
-          wmImg.crossOrigin = 'anonymous';
-          wmImg.src = watermarkSettings.fileUrl;
-          await new Promise((resolve) => {
-            wmImg.onload = () => {
-              ctx.globalAlpha = watermarkSettings.opacity / 100;
-              if (watermarkSettings.fullScreen) {
-                const cols = Math.ceil(canvas.width / wmImg.width);
-                const rows = Math.ceil(canvas.height / wmImg.height);
-                for (let y = 0; y < rows; y++) {
-                  for (let x = 0; x < cols; x++) {
-                    ctx.drawImage(wmImg, x * wmImg.width, y * wmImg.height);
-                  }
-                }
-              } else {
-                const x = (canvas.width - wmImg.width) / 2;
-                const y = (canvas.height - wmImg.height) / 2;
-                ctx.drawImage(wmImg, x, y);
-              }
-              ctx.globalAlpha = 1;
-              resolve();
-            };
-          });
-        }
-
-        if (hasLogo) {
-          const logoImg = new Image();
-          logoImg.crossOrigin = 'anonymous';
-          logoImg.src = logoSettings.fileUrl;
-          await new Promise((resolve) => {
-            logoImg.onload = () => {
-              const logoWidth = (canvas.width * logoSettings.size) / 100;
-              const logoHeight = (logoImg.height * logoWidth) / logoImg.width;
-              const x = (canvas.width * logoSettings.positionX) / 100 - logoWidth / 2;
-              const y = (canvas.height * logoSettings.positionY) / 100 - logoHeight / 2;
-              ctx.globalAlpha = logoSettings.opacity / 100;
-              ctx.drawImage(logoImg, x, y, logoWidth, logoHeight);
-              ctx.globalAlpha = 1;
-              resolve();
-            };
-          });
-        }
-
-        canvas.toBlob((blob) => {
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `frame_${frame.index}.${settings.format}`;
-          link.click();
-          window.URL.revokeObjectURL(url);
-        }, `image/${settings.format}`);
-      };
-    } catch (error) {
-      message.error('下载失败');
+      const dataUrl = await renderFrameWithEffects(frame.url, watermarkSettings, logoSettings, 'single');
+      const blob = await fetch(dataUrl).then((response) => response.blob());
+      downloadBlob(blob, `frame_${frame.index}.${settings.format}`);
+    } catch {
+      message.error('下载失败。');
     }
   };
 
   const handleDownloadBatch = async (ids, zipName) => {
     try {
-      const response = await axios.post(`${API_BASE}/api/download`,
-        {
-          frameIds: ids,
-          zipName,
-          watermark: watermarkSettings.enabled ? {
-            serverPath: watermarkSettings.serverPath,
-            fullScreen: watermarkSettings.fullScreen,
-            opacity: watermarkSettings.opacity
-          } : null,
-          logo: logoSettings.enabled ? {
-            serverPath: logoSettings.serverPath,
-            positionX: logoSettings.positionX,
-            positionY: logoSettings.positionY,
-            opacity: logoSettings.opacity,
-            size: logoSettings.size
-          } : null
-        },
-        { responseType: 'blob' }
-      );
+      const response = await downloadZip({
+        frameIds: ids,
+        zipName,
+        watermark:
+          watermarkSettings.enabled && watermarkSettings.applyToAll
+            ? {
+                serverPath: watermarkSettings.serverPath,
+                fullScreen: watermarkSettings.fullScreen,
+                opacity: watermarkSettings.opacity
+              }
+            : null,
+        logo:
+          logoSettings.enabled && logoSettings.applyToAll
+            ? {
+                serverPath: logoSettings.serverPath,
+                positionX: logoSettings.positionX,
+                positionY: logoSettings.positionY,
+                opacity: logoSettings.opacity,
+                size: logoSettings.size
+              }
+            : null
+      });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${zipName}.zip`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      message.success('下载成功');
+      downloadBlob(new Blob([response.data]), `${zipName}.zip`);
+      message.success('下载成功。');
     } catch (error) {
-      message.error('下载失败');
+      const errorMessage = await readBlobError(error);
+      message.error(`下载失败: ${errorMessage}`);
     }
   };
 
@@ -224,11 +178,7 @@ function App() {
         视频智能截帧工具
       </Header>
       <Content style={{ padding: 24, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
-        <UploadArea
-          onUploadSuccess={handleUploadSuccess}
-          videoInfo={videoInfo}
-          onClear={handleReset}
-        />
+        <UploadArea onUploadSuccess={setVideoInfo} videoInfo={videoInfo} onClear={handleReset} />
 
         {videoInfo && (
           <div style={{ marginTop: 24 }}>
@@ -276,7 +226,7 @@ function App() {
         )}
 
         <PreviewModal
-          visible={!!previewFrame}
+          visible={Boolean(previewFrame)}
           frame={previewFrame}
           frames={frames}
           onClose={() => setPreviewFrame(null)}

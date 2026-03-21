@@ -1,84 +1,105 @@
 @echo off
+setlocal
 chcp 65001 >nul
-echo ========================================
-echo   生成/更新部署包
-echo ========================================
-echo.
 
 cd /d "%~dp0"
 
-set RELEASE_DIR=VideoFrameCutter-Release
+set "RELEASE_DIR=VideoFrameCutter-Release"
+set "RELEASE_BACKEND=%RELEASE_DIR%\backend"
+set "RELEASE_FRONTEND=%RELEASE_DIR%\frontend"
+set "RELEASE_INSTALLERS=%RELEASE_DIR%\installers"
+set "RELEASE_LOGS=%RELEASE_DIR%\logs"
 
-echo [1/7] 智能清理（保留installers和node_modules）...
-if exist "%RELEASE_DIR%\backend\src" rd /s /q "%RELEASE_DIR%\backend\src"
-if exist "%RELEASE_DIR%\frontend\dist" rd /s /q "%RELEASE_DIR%\frontend\dist"
-echo [✓] 已清理旧代码文件
+echo ========================================
+echo   VideoFrameCutter Release Builder
+echo ========================================
+echo.
 
-echo [2/7] 创建目录结构...
-if not exist "%RELEASE_DIR%\backend\src" mkdir "%RELEASE_DIR%\backend\src"
-if not exist "%RELEASE_DIR%\frontend\dist" mkdir "%RELEASE_DIR%\frontend\dist"
-if not exist "%RELEASE_DIR%\installers" mkdir "%RELEASE_DIR%\installers"
-if not exist "%RELEASE_DIR%\logs" mkdir "%RELEASE_DIR%\logs"
+echo [1/7] Prepare release folders...
+if not exist "%RELEASE_DIR%" mkdir "%RELEASE_DIR%"
+if not exist "%RELEASE_BACKEND%" mkdir "%RELEASE_BACKEND%"
+if not exist "%RELEASE_FRONTEND%" mkdir "%RELEASE_FRONTEND%"
+if not exist "%RELEASE_INSTALLERS%" mkdir "%RELEASE_INSTALLERS%"
+if not exist "%RELEASE_LOGS%" mkdir "%RELEASE_LOGS%"
 
-echo [3/7] 复制后端文件...
-xcopy /E /I /Y /Q "backend\src" "%RELEASE_DIR%\backend\src\" >nul
-copy /Y "backend\package.json" "%RELEASE_DIR%\backend\" >nul
-copy /Y "backend\.env" "%RELEASE_DIR%\backend\" >nul
+if exist "%RELEASE_BACKEND%\src" rd /s /q "%RELEASE_BACKEND%\src"
+if exist "%RELEASE_FRONTEND%\dist" rd /s /q "%RELEASE_FRONTEND%\dist"
+if exist "%RELEASE_BACKEND%\test" rd /s /q "%RELEASE_BACKEND%\test"
 
-echo [4/7] 复制前端构建文件...
-if exist "frontend\dist" (
-    xcopy /E /I /Y /Q "frontend\dist" "%RELEASE_DIR%\frontend\dist\" >nul
-    echo [✓] 前端文件已复制
+mkdir "%RELEASE_BACKEND%\src" >nul 2>&1
+mkdir "%RELEASE_FRONTEND%\dist" >nul 2>&1
+
+echo [2/7] Copy backend source...
+xcopy /E /I /Y /Q "backend\src\*" "%RELEASE_BACKEND%\src\" >nul
+if errorlevel 1 (
+    echo [ERROR] Failed to copy backend source.
+    if not "%NO_PAUSE%"=="1" pause
+    exit /b 1
+)
+
+if exist "backend\package.json" copy /Y "backend\package.json" "%RELEASE_BACKEND%\" >nul
+if exist "backend\package-lock.json" copy /Y "backend\package-lock.json" "%RELEASE_BACKEND%\" >nul
+if exist "backend\.env" copy /Y "backend\.env" "%RELEASE_BACKEND%\" >nul
+
+echo [3/7] Copy frontend build output...
+if exist "frontend\dist\index.html" (
+    xcopy /E /I /Y /Q "frontend\dist\*" "%RELEASE_FRONTEND%\dist\" >nul
+    if errorlevel 1 (
+        echo [ERROR] Failed to copy frontend build output.
+        if not "%NO_PAUSE%"=="1" pause
+        exit /b 1
+    )
 ) else (
-    echo [!] 警告: frontend\dist 不存在，请先运行 npm run build
+    echo [WARN] frontend\dist\index.html not found. Run "npm.cmd run build" in frontend first.
 )
 
-echo [5/7] 复制部署脚本（仅当根目录存在时）...
-if exist "start.bat" copy /Y "start.bat" "%RELEASE_DIR%\" >nul
-if exist "stop.bat" copy /Y "stop.bat" "%RELEASE_DIR%\" >nul
-if exist "install-env.bat" copy /Y "install-env.bat" "%RELEASE_DIR%\" >nul
-if exist "download-installers.bat" copy /Y "download-installers.bat" "%RELEASE_DIR%\" >nul
-if exist "README-部署说明.txt" copy /Y "README-部署说明.txt" "%RELEASE_DIR%\" >nul
-echo [✓] 部署脚本已更新
-
-echo [6/7] 复制安装包说明...
-if exist "installers\下载说明.txt" (
-    copy /Y "installers\下载说明.txt" "%RELEASE_DIR%\installers\" >nul
+echo [4/7] Copy runtime scripts and docs...
+for %%F in ("start.bat" "stop.bat" "install-env.bat" "README.md" "DEPLOY.md" "ecosystem.config.cjs") do (
+    if exist "%%~F" copy /Y "%%~F" "%RELEASE_DIR%\" >nul
 )
-if exist "installers\放置安装包说明.txt" (
-    copy /Y "installers\放置安装包说明.txt" "%RELEASE_DIR%\installers\" >nul
+for %%F in (README-*.txt) do (
+    if exist "%%~F" copy /Y "%%~F" "%RELEASE_DIR%\" >nul
 )
 
-echo [7/8] 检查安装包（不覆盖已存在的）...
-if exist "installers\node-v18.20.5-x64.msi" (
-    if not exist "%RELEASE_DIR%\installers\node-v18.20.5-x64.msi" (
-        copy /Y "installers\node-v18.20.5-x64.msi" "%RELEASE_DIR%\installers\" >nul
-        echo [✓] Node.js 安装包已复制
-    ) else (
-        echo [✓] Node.js 安装包已存在，保持不变
-    )
+echo [5/7] Copy installer assets...
+echo        Existing installer assets in the release folder will be kept.
+if exist "installers\*" (
+    xcopy /E /I /Y /Q "installers\*" "%RELEASE_INSTALLERS%\" >nul
 )
-if exist "installers\ffmpeg" (
-    if not exist "%RELEASE_DIR%\installers\ffmpeg" (
-        xcopy /E /I /Y /Q "installers\ffmpeg" "%RELEASE_DIR%\installers\ffmpeg\" >nul
-        echo [✓] FFmpeg 已复制
-    ) else (
-        echo [✓] FFmpeg 已存在，保持不变
+if exist "ffmpeg\bin\ffmpeg.exe" if exist "ffmpeg\bin\ffprobe.exe" (
+    if exist "%RELEASE_INSTALLERS%\ffmpeg" rd /s /q "%RELEASE_INSTALLERS%\ffmpeg"
+    xcopy /E /I /Y /Q "ffmpeg\*" "%RELEASE_INSTALLERS%\ffmpeg\" >nul
+) else (
+    if exist "ffmpeg\*" (
+        echo [WARN] Source ffmpeg folder exists but is incomplete.
+        echo        Skipping overwrite to avoid deleting a valid bundled FFmpeg package.
     )
 )
 
-echo.
-echo [8/8] 修复bat文件换行符格式...
+if not exist "%RELEASE_INSTALLERS%\ffmpeg\bin\ffmpeg.exe" (
+    echo [WARN] Bundled ffmpeg.exe is missing in the release package.
+)
+if not exist "%RELEASE_INSTALLERS%\ffmpeg\bin\ffprobe.exe" (
+    echo [WARN] Bundled ffprobe.exe is missing in the release package.
+)
+
+echo [6/7] Ensure runtime folders exist...
+mkdir "%RELEASE_BACKEND%\uploads" >nul 2>&1
+mkdir "%RELEASE_BACKEND%\frames" >nul 2>&1
+mkdir "%RELEASE_BACKEND%\watermarks" >nul 2>&1
+mkdir "%RELEASE_BACKEND%\logos" >nul 2>&1
+
+echo [7/8] Normalize batch file line endings...
 powershell -ExecutionPolicy Bypass -Command "$files = Get-ChildItem -Path '%RELEASE_DIR%' -Filter '*.bat' -Recurse; foreach ($file in $files) { $content = [System.IO.File]::ReadAllText($file.FullName); $content = $content -replace \"`r`n\", \"`n\"; $content = $content -replace \"`n\", \"`r`n\"; [System.IO.File]::WriteAllText($file.FullName, $content) }" >nul
-echo [✓] 换行符格式已修复
+
+echo [8/8] Normalize document encoding...
+powershell -ExecutionPolicy Bypass -Command "$files = Get-ChildItem -Path '%RELEASE_DIR%' -Include '*.md','*.txt' -File; $enc = New-Object System.Text.UTF8Encoding($true); foreach ($file in $files) { $content = Get-Content -Raw -Encoding UTF8 $file.FullName; [System.IO.File]::WriteAllText($file.FullName, $content, $enc) }" >nul
 
 echo.
-echo ========================================
-echo   部署包更新完成！
-echo ========================================
+echo Release package is ready:
+echo %CD%\%RELEASE_DIR%\
+echo Installer assets are kept in:
+echo %CD%\%RELEASE_INSTALLERS%\
 echo.
-echo   部署包位置: %CD%\%RELEASE_DIR%\
-echo.
-echo   可以将此文件夹复制到服务器部署
-echo.
-pause
+if not "%NO_PAUSE%"=="1" pause
+exit /b 0

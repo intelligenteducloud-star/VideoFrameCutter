@@ -1,108 +1,132 @@
-# 视频智能截帧工具 - 部署指南
+﻿# 视频智能截帧工具部署说明
 
-## 系统要求
+本文档基于当前仓库实际实现整理，适用于局域网或单机部署。
+
+## 部署目标
+
+- 一个 Node.js 后端服务
+- 一个由后端托管的前端静态产物
+- 一套可访问的 FFmpeg / ffprobe 环境
+
+默认服务端口：`3500`
+
+## 环境要求
 
 - Node.js 18+
-- FFmpeg（必须安装）
-- PM2（推荐用于进程管理）
+- FFmpeg / ffprobe
+- Windows、Linux 均可
+- 可选：PM2、Nginx
 
-## 部署步骤
-
-### 1. 上传文件到服务器
-
-将整个项目目录上传到服务器，或使用 git clone：
+## 一、获取项目
 
 ```bash
 git clone https://github.com/intelligenteducloud-star/VideoFrameCutter.git
 cd VideoFrameCutter
 ```
 
-### 2. 安装依赖
+## 二、安装依赖
+
+### 后端
 
 ```bash
-# 安装后端依赖
 cd backend
 npm install
-
-# 前端已构建，无需再次安装
 ```
 
-### 3. 配置环境变量
+### 前端
 
-编辑 `backend/.env` 文件：
-
+```bash
+cd ../frontend
+npm install
 ```
+
+## 三、构建前端
+
+```bash
+cd frontend
+npm run build
+```
+
+构建后产物输出到 [`frontend/dist`](D:\AIprojects\VideoFrameCutter\frontend\dist)，后端会自动托管该目录。
+
+## 四、配置后端环境变量
+
+编辑 [`backend/.env`](D:\AIprojects\VideoFrameCutter\backend\.env)：
+
+```env
 PORT=3500
 MAX_FILE_SIZE=314572800
+
+# 如果系统 PATH 中找不到 ffmpeg / ffprobe，可显式指定
+# FFMPEG_PATH=/usr/bin/ffmpeg
+# FFPROBE_PATH=/usr/bin/ffprobe
+
+# 可选的清理策略
+# CLEANUP_INTERVAL_MS=3600000
+# UPLOAD_TTL_MS=86400000
+# FRAMES_TTL_MS=86400000
+# ASSET_TTL_MS=604800000
 ```
 
-### 4. 安装 FFmpeg
+## 五、配置 FFmpeg
 
-**Ubuntu/Debian:**
+后端启动时按以下顺序寻找 FFmpeg：
+
+1. `.env` 中的 `FFMPEG_PATH` / `FFPROBE_PATH`
+2. 项目内 `installers/ffmpeg/bin`
+3. 系统环境变量 `PATH`
+
+### Linux
+
 ```bash
 sudo apt update
 sudo apt install ffmpeg
 ```
 
-**CentOS/RHEL:**
-```bash
-sudo yum install ffmpeg
-```
+校验：
 
-**验证安装:**
 ```bash
 ffmpeg -version
+ffprobe -version
 ```
 
-### 5. 启动服务
+### Windows
 
-**方式1: 使用 PM2（推荐）**
+- 可以直接安装到系统环境变量
+- 也可以把 `ffmpeg.exe` 和 `ffprobe.exe` 放进 `installers/ffmpeg/bin`
 
-```bash
-# 安装 PM2
-npm install -g pm2
+## 六、启动服务
 
-# 启动服务
-pm2 start ecosystem.config.cjs
-
-# 查看状态
-pm2 status
-
-# 查看日志
-pm2 logs video-frame-cutter
-
-# 设置开机自启
-pm2 startup
-pm2 save
-```
-
-**方式2: 直接启动**
+### 方式 1：直接启动
 
 ```bash
 cd backend
 npm start
 ```
 
-### 6. 访问应用
+访问：
 
-打开浏览器访问：`http://服务器IP:3500`
-
-## 防火墙配置
-
-确保开放 3500 端口：
-
-```bash
-# Ubuntu/Debian
-sudo ufw allow 3500
-
-# CentOS/RHEL
-sudo firewall-cmd --permanent --add-port=3500/tcp
-sudo firewall-cmd --reload
+```text
+http://localhost:3500
 ```
 
-## Nginx 反向代理（可选）
+### 方式 2：使用 PM2
 
-如果需要使用域名访问，配置 Nginx：
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 status
+pm2 logs video-frame-cutter
+```
+
+设置开机启动：
+
+```bash
+pm2 startup
+pm2 save
+```
+
+## 七、Nginx 反向代理，可选
 
 ```nginx
 server {
@@ -115,7 +139,7 @@ server {
         proxy_pass http://localhost:3500;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
         proxy_set_header X-Real-IP $remote_addr;
@@ -131,63 +155,75 @@ server {
 }
 ```
 
-## 常用命令
+## 八、开放端口
+
+确认 `3500` 端口可访问。
+
+### Ubuntu / Debian
 
 ```bash
-# PM2 管理
-pm2 restart video-frame-cutter  # 重启
-pm2 stop video-frame-cutter     # 停止
-pm2 delete video-frame-cutter   # 删除
-pm2 logs video-frame-cutter     # 查看日志
-
-# 查看进程
-pm2 list
-
-# 监控
-pm2 monit
+sudo ufw allow 3500
 ```
 
-## 故障排查
+### CentOS / RHEL
 
-1. **端口被占用**
-   ```bash
-   lsof -i :3500
-   kill -9 <PID>
-   ```
-
-2. **FFmpeg 未安装**
-   - 检查：`ffmpeg -version`
-   - 安装后重启服务
-
-3. **文件上传失败**
-   - 检查磁盘空间
-   - 检查目录权限
-
-4. **Sharp 模块错误**
-   ```bash
-   cd backend
-   npm rebuild sharp
-   ```
-
-## 目录结构
-
-```
-VideoFrameCutter/
-├── backend/
-│   ├── src/
-│   ├── uploads/      # 视频上传目录
-│   ├── frames/       # 截帧存储目录
-│   ├── watermarks/   # 水印文件目录
-│   └── logos/        # Logo文件目录
-├── frontend/
-│   └── dist/         # 前端构建文件
-├── logs/             # PM2日志目录
-└── ecosystem.config.cjs  # PM2配置
+```bash
+sudo firewall-cmd --permanent --add-port=3500/tcp
+sudo firewall-cmd --reload
 ```
 
-## 注意事项
+## 九、运行建议
 
-1. 定期清理临时文件（uploads、frames目录）
-2. 建议配置日志轮转
-3. 监控磁盘空间使用
-4. 定期备份重要数据
+- 定期执行或保留后端自动清理策略，避免 `uploads`、`frames` 持续膨胀
+- 为 PM2 或系统服务配置日志轮转
+- 监控磁盘占用，尤其是大视频和大量抽帧场景
+- 在生产环境将前端构建产物和后端源码一起发布
+
+## 十、常见故障排查
+
+### 1. 端口被占用
+
+Linux:
+
+```bash
+lsof -i :3500
+kill -9 <PID>
+```
+
+Windows:
+
+```powershell
+netstat -ano | findstr 3500
+taskkill /PID <PID> /F
+```
+
+### 2. FFmpeg 未找到
+
+检查：
+
+- `.env` 中路径是否正确
+- `installers/ffmpeg/bin` 是否存在可执行文件
+- 系统 `PATH` 是否已包含 FFmpeg
+
+### 3. 上传失败
+
+检查：
+
+- 文件大小是否超过 `MAX_FILE_SIZE`
+- 后端目录写权限
+- 反向代理的上传大小限制
+
+### 4. Sharp 相关错误
+
+```bash
+cd backend
+npm rebuild sharp
+```
+
+### 5. 前端页面空白
+
+检查：
+
+- 是否已执行 `frontend` 的 `npm run build`
+- 后端是否能读取到 `frontend/dist`
+- 浏览器控制台是否有 `VITE_API_BASE` 配置问题

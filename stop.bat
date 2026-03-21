@@ -1,12 +1,18 @@
 @echo off
+setlocal
 chcp 65001 >nul
+
 echo ========================================
-echo   视频智能截帧工具 - 停止服务
+echo   VideoFrameCutter Stop
 echo ========================================
 echo.
 
-taskkill /FI "WINDOWTITLE eq 视频截帧工具-后端服务*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq VideoFrameCutter-Backend*" /F >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] No matching backend window was found.
+) else (
+    echo [OK] Backend service stopped.
+)
 
-echo [✓] 服务已停止
 echo.
-pause
+if not "%NO_PAUSE%"=="1" pause

@@ -15,7 +15,7 @@ export default function SettingsPanel({
 }) {
   return (
     <div style={{ padding: 24, background: '#fff', borderRadius: 8 }}>
-      <h3>⚙️ 截帧参数设置</h3>
+      <h3>截帧参数设置</h3>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
@@ -24,21 +24,22 @@ export default function SettingsPanel({
             min={1}
             max={50}
             value={settings.count}
-            onChange={(v) => onChange({ ...settings, count: v })}
+            onChange={(value) => onChange({ ...settings, count: value ?? 10 })}
             disabled={disabled}
-          /> 张
+          />{' '}
+          张
         </div>
 
         <div>
           <label>图片质量: </label>
           <Radio.Group
             value={settings.quality}
-            onChange={(e) => onChange({ ...settings, quality: e.target.value })}
+            onChange={(event) => onChange({ ...settings, quality: event.target.value })}
             disabled={disabled}
           >
-            <Radio value="low">低质量</Radio>
-            <Radio value="medium">中质量</Radio>
-            <Radio value="high">高质量</Radio>
+            <Radio value="low">低</Radio>
+            <Radio value="medium">中</Radio>
+            <Radio value="high">高</Radio>
           </Radio.Group>
         </div>
 
@@ -46,7 +47,7 @@ export default function SettingsPanel({
           <label>图片格式: </label>
           <Radio.Group
             value={settings.format}
-            onChange={(e) => onChange({ ...settings, format: e.target.value })}
+            onChange={(event) => onChange({ ...settings, format: event.target.value })}
             disabled={disabled}
           >
             <Radio value="jpg">JPG</Radio>
@@ -58,10 +59,10 @@ export default function SettingsPanel({
           <label>分辨率: </label>
           <Radio.Group
             value={settings.resolution}
-            onChange={(e) => onChange({ ...settings, resolution: e.target.value })}
+            onChange={(event) => onChange({ ...settings, resolution: event.target.value })}
             disabled={disabled}
           >
-            <Radio value="original">保持原视频</Radio>
+            <Radio value="original">原始分辨率</Radio>
             <Radio value="720p">720P</Radio>
             <Radio value="1080p">1080P</Radio>
           </Radio.Group>
@@ -69,21 +70,21 @@ export default function SettingsPanel({
 
         <Space>
           <Button type="primary" onClick={onExtract} disabled={disabled}>
-            🚀 开始截取
+            开始截帧
           </Button>
-          <Button onClick={onReset}>🔄 清空重置</Button>
+          <Button onClick={onReset}>清空重置</Button>
         </Space>
 
         <Collapse
           items={[
             {
               key: 'watermark',
-              label: '🎨 水印设置',
+              label: '水印设置',
               children: <WatermarkPanel settings={watermarkSettings} onChange={onWatermarkChange} />
             },
             {
               key: 'logo',
-              label: '🏷️ Logo设置',
+              label: 'Logo 设置',
               children: <LogoPanel settings={logoSettings} onChange={onLogoChange} />
             }
           ]}

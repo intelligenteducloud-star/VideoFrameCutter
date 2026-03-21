@@ -1,70 +1,94 @@
 @echo off
+setlocal
 chcp 65001 >nul
-echo ========================================
-echo   视频智能截帧工具 - 环境安装
-echo ========================================
-echo.
 
 cd /d "%~dp0"
 
-echo [1/4] 检查并安装 Node.js...
+echo ========================================
+echo   VideoFrameCutter Environment Setup
+echo ========================================
+echo.
+
+echo [1/5] Check Node.js...
 node -v >nul 2>&1
 if errorlevel 1 (
-    echo [!] 未检测到Node.js，开始自动安装...
     if exist "installers\node-v18.20.5-x64.msi" (
-        echo 正在安装 Node.js...
+        echo Node.js not found. Installing from installers\node-v18.20.5-x64.msi ...
         start /wait msiexec /i "%~dp0installers\node-v18.20.5-x64.msi" /qb
-        echo [✓] Node.js 安装完成
-        echo [提示] 请关闭此窗口，重新打开后再运行此脚本
-        pause
+        echo Node.js installation completed.
+        echo Re-open this script after your PATH is refreshed.
+        if not "%NO_PAUSE%"=="1" pause
         exit /b 0
     ) else (
-        echo [错误] 未找到 Node.js 安装包
-        echo [提示] 请将 node-v18.20.5-x64.msi 放入 installers 目录
-        pause
+        echo [ERROR] Node.js not found and local installer is missing.
+        echo         Put node-v18.20.5-x64.msi into installers\ and run again.
+        if not "%NO_PAUSE%"=="1" pause
         exit /b 1
     )
-) else (
-    echo [✓] Node.js 已安装
 )
 
-echo.
-echo [2/4] 检查FFmpeg...
-if exist "installers\ffmpeg\bin\ffmpeg.exe" (
-    echo [✓] FFmpeg 文件已就绪
+echo [2/5] Check FFmpeg package...
+if exist "installers\ffmpeg\bin\ffmpeg.exe" if exist "installers\ffmpeg\bin\ffprobe.exe" (
+    echo FFmpeg package found in installers\ffmpeg\bin
 ) else (
-    echo [错误] 未找到FFmpeg文件
-    echo [提示] 请确保 installers\ffmpeg\bin\ffmpeg.exe 存在
-    pause
-    exit /b 1
+    echo [WARN] Local FFmpeg package is incomplete or missing.
+    echo        You can still run the app if ffmpeg and ffprobe are available in PATH.
+    echo        Recommended: keep ffmpeg inside installers\ffmpeg\bin for portable deployment.
 )
 
-echo.
-echo [3/4] 安装后端依赖...
+echo [3/6] Install backend dependencies...
 cd backend
-call npm install
+set "npm_config_cache=%~dp0backend\.npm-cache"
+set "npm_config_logs_dir=%~dp0backend\_logs"
+if not exist "%npm_config_cache%" mkdir "%npm_config_cache%"
+if not exist "%npm_config_logs_dir%" mkdir "%npm_config_logs_dir%"
+call npm.cmd install --include=optional --no-fund --no-audit
 if errorlevel 1 (
-    echo [错误] 依赖安装失败
-    pause
+    echo [ERROR] Backend dependency installation failed.
+    if not "%NO_PAUSE%"=="1" pause
     exit /b 1
 )
-echo [✓] 后端依赖安装完成
+
+echo [4/6] Verify sharp runtime...
+call node -e "import('sharp').then(() => console.log('sharp runtime OK')).catch((error) => { console.error(error); process.exit(1); })"
+if errorlevel 1 (
+    echo [WARN] sharp runtime verification failed. Attempting rebuild...
+    call npm.cmd rebuild sharp
+    if errorlevel 1 (
+        echo [ERROR] sharp rebuild failed.
+        if not "%NO_PAUSE%"=="1" pause
+        exit /b 1
+    )
+
+    call node -e "import('sharp').then(() => console.log('sharp runtime OK after rebuild')).catch((error) => { console.error(error); process.exit(1); })"
+    if errorlevel 1 (
+        echo [ERROR] sharp is still unavailable after rebuild.
+        echo         Delete backend\\node_modules and run install-env.bat again.
+        if not "%NO_PAUSE%"=="1" pause
+        exit /b 1
+    )
+)
 
 cd ..
-echo.
-echo [4/4] 创建必要目录...
+echo [5/6] Ensure runtime folders exist...
 if not exist "backend\uploads" mkdir "backend\uploads"
 if not exist "backend\frames" mkdir "backend\frames"
 if not exist "backend\watermarks" mkdir "backend\watermarks"
 if not exist "backend\logos" mkdir "backend\logos"
 if not exist "logs" mkdir "logs"
-echo [✓] 目录创建完成
+
+echo [6/6] Check frontend build output...
+if exist "frontend\dist\index.html" (
+    echo Frontend build output found.
+) else (
+    echo [WARN] frontend\dist\index.html was not found.
+    echo        Build it with: cd frontend ^&^& npm.cmd run build
+)
 
 echo.
-echo ========================================
-echo   环境安装完成！
-echo ========================================
+echo Environment setup completed.
+echo Node installer path: installers\node-v18.20.5-x64.msi
+echo FFmpeg path: installers\ffmpeg\bin\ffmpeg.exe
+echo Next step: run start.bat
 echo.
-echo   下一步: 运行 start.bat 启动服务
-echo.
-pause
+if not "%NO_PAUSE%"=="1" pause
